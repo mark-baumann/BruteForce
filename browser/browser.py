@@ -4,6 +4,8 @@ Browser Proxy Session Manager
 Verwendet die proxy.py für Tor-Verbindungen und stellt Browser-Sessions bereit.
 """
 
+import os
+import sys
 import time
 import json
 import logging
@@ -18,6 +20,12 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, WebDriverException
 import requests
+
+# Sicherstellen, dass das Repo-Root (Elternverzeichnis) im Python-Pfad ist,
+# damit 'from proxy import TorProxy' auch funktioniert, wenn dieses Skript
+# aus dem Ordner 'browser' heraus gestartet wird.
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from proxy import TorProxy
 
 # Logging konfigurieren
@@ -396,25 +404,43 @@ class BrowserSession:
 
 
 def main():
-    """Beispiel für die Verwendung"""
-    # Einfache Verwendung
-    with BrowserSession("chrome") as session:
-        if session.start():
-            print(f"✓ Browser gestartet")
-            print(f"Aktuelle IP: {session.get_ip()}")
-            
-            if session.visit("https://httpbin.org/headers"):
-                print("✓ Seite besucht")
-                session.screenshot("test.png")
-                
-                # Neue Identität
-                session.new_identity()
-                print(f"Neue IP: {session.get_ip()}")
-            else:
-                print("✗ Fehler beim Besuchen der Seite")
-        else:
+    """CLI-Einstiegspunkt.
+
+    Aufrufbeispiele:
+      python browser.py markb.de
+      python browser.py https://markb.de
+      python browser.py    # öffnet httpbin Testseite
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Starte eine Browser-Proxy-Session über Tor und besuche eine URL.")
+    parser.add_argument("url", nargs="?", default="https://httpbin.org/headers", help="Ziel-URL (z. B. markb.de oder https://markb.de)")
+    parser.add_argument("--browser", choices=["chrome", "firefox"], default="chrome", help="Zu verwendender Browser")
+    args = parser.parse_args()
+
+    url = args.url.strip()
+    if not url.startswith("http://") and not url.startswith("https://"):
+        url = "https://" + url
+
+    session = BrowserSession(args.browser)
+    try:
+        if not session.start():
             print("✗ Browser konnte nicht gestartet werden")
+            return 1
+
+        current_ip = session.get_ip() or "Unbekannt"
+        print(f"✓ Browser gestartet – aktuelle IP über Tor: {current_ip}")
+
+        if session.visit(url):
+            print(f"✓ Seite geladen: {url}")
+        else:
+            print(f"✗ Konnte URL nicht laden: {url}")
+            return 1
+
+        return 0
+    finally:
+        session.close()
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
