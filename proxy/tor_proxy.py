@@ -17,11 +17,21 @@ from stem import Signal
 from stem.control import Controller
 
 # Logging konfigurieren
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
+if not logger.handlers:
+    logger.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    # Console
+    sh = logging.StreamHandler()
+    sh.setFormatter(formatter)
+    logger.addHandler(sh)
+    # File network.log
+    try:
+        fh = logging.FileHandler('network.log')
+        fh.setFormatter(formatter)
+        logger.addHandler(fh)
+    except Exception:
+        pass
 
 class TorProxy:
     """
@@ -241,7 +251,7 @@ ClientOnly 1
         """Erneuert die Tor-Identität (neue IP)"""
         try:
             with Controller.from_port(port=self.control_port) as controller:
-                controller.authenticate()
+                self._authenticate_controller(controller)
                 controller.signal(Signal.NEWNYM)
                 logger.info("Neue Tor-Identität angefordert")
                 time.sleep(5)  # Warte bis neue Verbindung aufgebaut ist
@@ -257,6 +267,55 @@ ClientOnly 1
             'https_proxy': f'socks5://127.0.0.1:{self.tor_port}',
             'socks_proxy': f'127.0.0.1:{self.tor_port}'
         }
+
+    def _authenticate_controller(self, controller: Controller):
+        """Versucht, den Controller zu authentifizieren (Cookie oder ohne Passwort)."""
+        try:
+            controller.authenticate()
+            return
+        except Exception:
+            try:
+                controller.authenticate("")
+            except Exception:
+                raise
+
+    def get_exit_fingerprint(self) -> Optional[str]:
+        """Liefert die Fingerprint-ID des aktuellen Exit-Knotens einer gebauten GENERAL-Circuit.
+        Hinweis: Pro Stream kann der Exit variieren; dies ist eine Heuristik ohne Internetzugriff.
+        """
+        try:
+            with Controller.from_port(port=self.control_port) as controller:
+                self._authenticate_controller(controller)
+                circuits = controller.get_circuits()
+                built = [c for c in circuits if c.status == 'BUILT' and c.purpose == 'GENERAL' and c.path]
+                if not built:
+                    return None
+                # Nimm die letzte Hop-Fingerprint der ersten gefundenen Circuit
+                exit_fp = built[0].path[-1][0]
+                return exit_fp
+        except Exception as e:
+            logger.error(f"Fehler beim Ermitteln des Exit-Fingerprints: {e}")
+            return None
+
+    def get_exit_ip(self) -> Optional[str]:
+        """Ermittelt die IP-Adresse des Exit-Knotens über die Tor-Netzwerkdaten (keine externen Dienste)."""
+        try:
+            with Controller.from_port(port=self.control_port) as controller:
+                self._authenticate_controller(controller)
+                circuits = controller.get_circuits()
+                built = [c for c in circuits if c.status == 'BUILT' and c.purpose == 'GENERAL' and c.path]
+                if not built:
+                    logger.warning("Keine gebaute Circuit gefunden, Exit-IP unbekannt")
+                    return None
+                exit_fp = built[0].path[-1][0]
+                desc = controller.get_network_status(exit_fp)
+                if desc and getattr(desc, 'address', None):
+                    logger.info(f"Exit-Node: {desc.nickname} ({desc.fingerprint}) {desc.address}")
+                    return desc.address
+                return None
+        except Exception as e:
+            logger.error(f"Fehler beim Ermitteln der Exit-IP: {e}")
+            return None
     
     def __enter__(self):
         """Context Manager Eingang"""
@@ -269,39 +328,3 @@ ClientOnly 1
         self.stop_tor()
 
 
-def main():
-    """Hauptfunktion für Tests"""
-    proxy = TorProxy()
-    
-    try:
-        print("Starte Tor...")
-        if proxy.start_tor():
-            print("✓ Tor gestartet")
-            
-            print("Erstelle Session...")
-            session = proxy.create_session()
-            if session:
-                print("✓ Session erstellt")
-                
-                print("Teste Verbindung...")
-                result = proxy.test_connection()
-                print(f"Status: {result['status']}")
-                if result['status'] == 'success':
-                    print(f"IP-Adresse: {result['ip']}")
-                    print(f"Message: {result['message']}")
-                else:
-                    print(f"Fehler: {result['message']}")
-            else:
-                print("✗ Session konnte nicht erstellt werden")
-        else:
-            print("✗ Tor konnte nicht gestartet werden")
-            
-    except KeyboardInterrupt:
-        print("\nBeende...")
-    finally:
-        proxy.stop_tor()
-        print("Tor gestoppt")
-
-
-if __name__ == "__main__":
-    main()
