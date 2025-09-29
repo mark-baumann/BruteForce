@@ -1,16 +1,16 @@
 import requests
 import json
-from proxy.tor_proxy import TorProxy  # Import der Tor Proxy Klasse
 
 
-def get_instagram_profile(session, username):
+
+def get_instagram_profile(username):
     url = f"https://www.instagram.com/api/v1/users/web_profile_info/?username={username}"
     headers = {
         "accept": "*/*",
         "accept-language": "en-US,en;q=0.9",
         "x-ig-app-id": "936619743392459"
     }
-    response = session.get(url, headers=headers)
+    response = requests.get(url, headers=headers)
 
     if response.status_code == 200:
         data = response.json()
@@ -31,8 +31,9 @@ def get_instagram_profile(session, username):
         return None
 
 
-def instagram_login(session, username, password):
-    # Hole CSRF Token über Session (Tor Proxy)
+def instagram_login(username, password):
+    session = requests.Session()
+    # Holen des CSRF-Tokens
     r = session.get("https://www.instagram.com/accounts/login/")
     csrf_token = r.cookies.get("csrftoken")
     headers = {
@@ -43,7 +44,7 @@ def instagram_login(session, username, password):
     }
     login_data = {
         "username": username,
-        "enc_password": f"#PWD_INSTAGRAM_BROWSER:0:&:{password}",
+        "enc_password": f"#PWD_INSTAGRAM_BROWSER:0:&:{password}",  # Aktuelles Format für Passwort
         "queryParams": "{}",
         "optIntoOneTap": "false"
     }
@@ -63,24 +64,26 @@ def instagram_login(session, username, password):
         print("Login fehlgeschlagen:", login_json.get("message", "Unbekannter Fehler"))
         return None
 
+def load_passwords(filename):
+    try:
+        with open(filename, "r", encoding="utf-8", errors="ignore") as f:
+            passwords = [line.strip() for line in f if line.strip()]
+        print(f"{len(passwords)} Passwörter geladen.")
+        return passwords
+    except FileNotFoundError:
+        print(f"Datei '{filename}' nicht gefunden.")
+        return []
 
 if __name__ == "__main__":
     username = input("Instagram Username: ")
     password = input("Instagram Password: ")
 
-    with TorProxy() as proxy:
-        session = proxy.session  # Requests-Session über Tor-Proxy
-
-        if not session:
-            print("Konnte keine Proxy-Session erzeugen. Exit.")
-            exit(1)
-
-        sess = instagram_login(session, username, password)
-        if sess:
-            print("Profilinformationen abrufen für:", username)
-            profile = get_instagram_profile(sess, username)
-            if profile:
-                for k, v in profile.items():
-                    print(f"{k}: {v}")
-        else:
-            print("Konnte kein Profil ohne Login abrufen oder Login fehlgeschlagen.")
+    sess = instagram_login(username, password)
+    if sess:
+        print("Profilinformationen abrufen für:", username)
+        profile = get_instagram_profile(username)
+        if profile:
+            for k, v in profile.items():
+                print(f"{k}: {v}")
+    else:
+        print("Konnte kein Profil ohne Login abrufen oder Login fehlgeschlagen.")
