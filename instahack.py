@@ -1,55 +1,119 @@
-from selenium import webdriver
+import sys
+import logging
+import time
+from browser.run_browser import BrowserSession  # Deine BrowserSession-Klasse
+from proxy import TorProxy  # Deine TorProxy-Klasse
+
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.chrome.options import Options
-import time
+
+# Logging Setup
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    logger.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    sh = logging.StreamHandler()
+    sh.setFormatter(formatter)
+    logger.addHandler(sh)
 
 
-def selenium_instagram_login(username, password):
-    options = Options()
-    options.add_argument("--headless")  # Ohne GUI, entferne für Debug
-    options.add_argument("--disable-gpu")
-    options.add_argument("--window-size=1920,1080")
+def wait_for_tor_circuit(tor_proxy, timeout=30):
+    for _ in range(timeout):
+        exit_ip = tor_proxy.get_exit_ip()
+        if exit_ip:
+            return exit_ip
+        time.sleep(1)
+    return None
 
-    driver = webdriver.Chrome(options=options)
+
+def instagram_login_via_browser(session: BrowserSession, username: str, password: str) -> bool:
+    driver = session.browser_proxy.driver  # Korrigierter Zugriff auf den Selenium Webdriver
+
     driver.get("https://www.instagram.com/accounts/login/")
+    time.sleep(5)
 
-    time.sleep(5)  # Warte bis Seite geladen
-
-    # Benutzername eingeben
     user_input = driver.find_element(By.NAME, "username")
     user_input.clear()
     user_input.send_keys(username)
 
-    # Passwort eingeben
     pass_input = driver.find_element(By.NAME, "password")
     pass_input.clear()
     pass_input.send_keys(password)
-
     pass_input.send_keys(Keys.RETURN)
 
-    # Warte auf Login-Prozess
     time.sleep(8)
 
-    # Prüfen, ob Login erfolgreich
-    if "accounts/onetap" in driver.current_url or "challenge" in driver.current_url:
-        print("Login eventuell blockiert oder Checkpoint erkannt.")
-        driver.quit()
+    current_url = driver.current_url
+    if "challenge" in current_url:
+        print("Login-Challenge erkannt.")
         return False
-
-    if "instagram.com" in driver.current_url:
+    elif "two_factor" in current_url:
+        print("Zwei-Faktor-Authentifizierung erforderlich.")
+        return False
+    elif "instagram.com" in current_url:
         print("Login erfolgreich!")
-        driver.quit()
         return True
     else:
-        print("Login fehlgeschlagen oder andere Seite:", driver.current_url)
-        driver.quit()
+        print(f"Login möglicherweise fehlgeschlagen. Aktuelle URL: {current_url}")
         return False
 
 
-if __name__ == "__main__":
+
+def main():
+    import sys
+    if len(sys.argv) < 2:
+        print("Nutzung: python instagram_selenium_login.py <ziel_url>")
+        sys.exit(1)
+
+    target_url = sys.argv[1]
+
+    tor = TorProxy()
+
+    # Prüfen, ob Tor bereits läuft; falls nicht, starten
+    if tor.is_tor_running():
+        print("Tor läuft bereits.")
+    else:
+        print("Tor läuft nicht, starte Tor...")
+        if tor.start_tor():
+            print("Tor erfolgreich gestartet.")
+        else:
+            print("Fehler beim Starten von Tor.")
+            sys.exit(1)
+
+    # BrowserSession mit TorProxy starten (sichtbar)
+    session = BrowserSession(tor_proxy=tor)
+    if not session.start():
+        logger.error("Browser konnte nicht gestartet werden.")
+        sys.exit(2)
+
+    logger.info("Warte auf Aufbau der Tor-Circuit...")
+    exit_ip = wait_for_tor_circuit(tor, timeout=30)
+    if exit_ip:
+        print(f"Tor Exit-IP: {exit_ip}")
+        logger.info(f"Tor Exit-IP: {exit_ip}")
+    else:
+        print("Tor Exit-IP unbekannt (Timeout)")
+        logger.warning("Tor Exit-IP unbekannt")
+
     username = input("Instagram Username: ")
     password = input("Instagram Password: ")
 
-    success = selenium_instagram_login(username, password)
-    print("Ergebnis Login:", success)
+    if not instagram_login_via_browser(session, username, password):
+        logger.error("Login fehlgeschlagen.")
+        session.close()
+        sys.exit(3)
+
+    if not session.visit(target_url):
+        logger.error(f"Konnte die URL nicht laden: {target_url}")
+        session.close()
+        sys.exit(4)
+
+    print(f"✓ Zielseite {target_url} geöffnet.")
+    print("Bitte schließe den Browser manuell, um das Programm zu beenden.")
+    session.wait_until_closed()
+    session.close()
+
+
+
+if __name__ == "__main__":
+    main()
