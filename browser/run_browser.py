@@ -5,11 +5,18 @@ Beispiel: python browser.py markb.de
 """
 
 import sys
+import os
+from pathlib import Path
 import logging
 from urllib.parse import urlparse
 
-# Vermeide Namenskonflikt mit diesem Skript-Namen durch relativen Import
+# Stelle sicher, dass das Projekt-Root vor site-packages liegt, um Namenskonflikte (PyPI 'proxy') zu vermeiden
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
+
+# Vermeide Namenskonflikt mit externem 'proxy' Paket durch explizite Pfadpriorisierung
 from browser.session import BrowserSession
+from proxy import TorProxy
 
 logger = logging.getLogger(__name__)
 if not logger.handlers:
@@ -36,11 +43,12 @@ def normalize_url(arg: str) -> str:
 
 def main():
     if len(sys.argv) < 2:
-        print("Nutzung: python browser.py <url>")
+        print("Nutzung: python -m browser.run_browser <url>")
         sys.exit(1)
 
     target = normalize_url(sys.argv[1])
-    session = BrowserSession()
+    tor = TorProxy()
+    session = BrowserSession(tor_proxy=tor)
 
     if not session.start():
         print("✗ Browser konnte nicht gestartet werden")
@@ -48,9 +56,8 @@ def main():
 
     # Exit-IP direkt über Tor-Controller ermitteln und anzeigen (ohne Internet-Service)
     try:
-        from proxy import TorProxy
-        tor = session.browser_proxy.tor_proxy if hasattr(session, 'browser_proxy') else TorProxy()
-        exit_ip = tor.get_exit_ip()
+        tor_inst = session.browser_proxy.tor_proxy
+        exit_ip = tor_inst.get_exit_ip()
         if exit_ip:
             print(f"Tor Exit-IP: {exit_ip}")
             logger.info(f"Tor Exit-IP: {exit_ip}")

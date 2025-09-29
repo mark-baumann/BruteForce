@@ -32,8 +32,8 @@ if not logger.handlers:
 
 
 class BrowserProxy:
-    def __init__(self):
-        self.tor_proxy = TorProxy()
+    def __init__(self, tor_proxy: Optional[TorProxy] = None):
+        self.tor_proxy = tor_proxy if tor_proxy is not None else TorProxy()
         self.driver = None
         self.session = None
 
@@ -126,8 +126,8 @@ class BrowserProxy:
 
 
 class BrowserSession:
-    def __init__(self):
-        self.browser_proxy = BrowserProxy()
+    def __init__(self, tor_proxy: Optional[TorProxy] = None):
+        self.browser_proxy = BrowserProxy(tor_proxy=tor_proxy)
 
     def start(self) -> bool:
         return self.browser_proxy.start_browser()

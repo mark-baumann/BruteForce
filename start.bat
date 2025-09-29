@@ -22,8 +22,8 @@ IF EXIST ".venv\Scripts\activate.bat" (
     pip install -r requirements.txt
 )
 
-REM Python-Skript starten
+REM Python-Modul starten (konsistent zu macOS/Linux)
 ECHO Starte Browser mit Tor-Proxy...
-python browser/run_browser.py "%~1"
+python -m browser.run_browser "%~1"
 
 PAUSE
