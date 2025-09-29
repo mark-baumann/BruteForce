@@ -2,3 +2,4 @@ __pycache__/
 .DS_Store
 network.log
 rockyou.txt
+.idea
