@@ -1,7 +1,7 @@
 #!/bin/zsh
 set -euo pipefail
 
-# start.sh
+# start_browser.sh
 # Startet den sichtbaren Chrome-Browser über Tor-Proxy und zeigt die Exit-IP.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" >/dev/null 2>&1 && pwd)"
