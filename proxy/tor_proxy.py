@@ -1,53 +1,88 @@
 #!/usr/bin/env python3
 """
-Tor Proxy Manager - Platform Detector
-Lädt automatisch die richtige Tor-Proxy-Implementierung für das aktuelle Betriebssystem.
+Tor Proxy Manager – Plattformunabhängiger Loader mit eingebauten Klassen
+Automatisch wählt das Skript für Windows oder macOS/Linux die richtige TorProxy-Klasse.
 """
 
 import platform
-import sys
-import os
+import subprocess
+import time
 
-# Füge den proxy-Ordner zum Python-Pfad hinzu
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-if CURRENT_DIR not in sys.path:
-    sys.path.insert(0, CURRENT_DIR)
+class TorProxyMac:
+    """
+    Tor-Proxy für macOS/Linux: Startet Tor und richtet Proxy-Verbindung ein.
+    """
 
+    def __init__(self, tor_bin="tor", socks_port=9050):
+        self.tor_bin = tor_bin
+        self.socks_port = socks_port
+        self.tor_process = None
+
+    def start(self):
+        print("[TorProxy-Mac] Starte Tor...")
+        try:
+            self.tor_process = subprocess.Popen([self.tor_bin])
+            # Warte auf Tor-Startup
+            for _ in range(10):
+                result = subprocess.run(["pgrep", "tor"], capture_output=True)
+                if result.returncode == 0:
+                    print("[TorProxy-Mac] Tor läuft.")
+                    return True
+                time.sleep(1)
+            print("[TorProxy-Mac] Tor-Start fehlgeschlagen.")
+            return False
+        except Exception as e:
+            print(f"[TorProxy-Mac] Fehler beim Starten: {e}")
+            return False
+
+    def stop(self):
+        if self.tor_process:
+            print("[TorProxy-Mac] Stoppe Tor.")
+            self.tor_process.terminate()
+
+    def get_proxy_url(self):
+        return f"socks5://127.0.0.1:{self.socks_port}"
+
+class TorProxyWindows:
+    """
+    Tor-Proxy für Windows: Startet Tor und setzt Proxy-Verbindung.
+    """
+    def __init__(self, tor_bin="tor.exe", socks_port=9050):
+        self.tor_bin = tor_bin
+        self.socks_port = socks_port
+        self.tor_process = None
+
+    def start(self):
+        print("[TorProxy-Windows] Starte Tor...")
+        try:
+            self.tor_process = subprocess.Popen([self.tor_bin])
+            # Warte auf Tor-Startup
+            for _ in range(10):
+                result = subprocess.run(["tasklist", "/FI", "IMAGENAME eq tor.exe"], capture_output=True)
+                if b"tor.exe" in result.stdout:
+                    print("[TorProxy-Windows] Tor läuft.")
+                    return True
+                time.sleep(1)
+            print("[TorProxy-Windows] Tor-Start fehlgeschlagen.")
+            return False
+        except Exception as e:
+            print(f"[TorProxy-Windows] Fehler beim Starten: {e}")
+            return False
+
+    def stop(self):
+        if self.tor_process:
+            print("[TorProxy-Windows] Stoppe Tor.")
+            self.tor_process.terminate()
+
+    def get_proxy_url(self):
+        return f"socks5://127.0.0.1:{self.socks_port}"
 
 def get_tor_proxy():
-    """
-    Lädt die richtige Tor-Proxy-Implementierung basierend auf dem Betriebssystem.
-
-    Returns:
-        TorProxy-Klasse für das aktuelle Betriebssystem
-    """
     system = platform.system().lower()
-
     if system == "windows":
-        try:
-            from .tor_proxy_windows import TorProxy  # type: ignore
-            return TorProxy
-        except Exception as e:
-            print(f"Fehler beim Laden der Windows Tor-Proxy-Implementierung: {e}")
-            print("Falling back to macOS/Linux implementation...")
-            from .tor_proxy_mac import TorProxy  # type: ignore
-            return TorProxy
+        return TorProxyWindows
     else:
-        # macOS, Linux, etc.
-        try:
-            from .tor_proxy_mac import TorProxy  # type: ignore
-            return TorProxy
-        except Exception as e:
-            print(f"Fehler beim Laden der macOS/Linux Tor-Proxy-Implementierung: {e}")
-            print("Falling back to Windows implementation...")
-            from .tor_proxy_windows import TorProxy  # type: ignore
-            return TorProxy
+        return TorProxyMac
 
-
-# Lade die richtige TorProxy-Klasse
 TorProxy = get_tor_proxy()
-
-# Exportiere die Klasse für einfache Verwendung
 __all__ = ["TorProxy"]
-
-
