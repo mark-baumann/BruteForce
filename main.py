@@ -41,10 +41,9 @@ def run_browser_with_proxy(url):
     subprocess.call([sys.executable, "-m", "browser.run_browser", url])
 
 
-def run_instahack(url):
+def run_instahack():
     # Instahack mit URL starten
-    print(f"[Instahack] Starte Instahack für: {url}")
-    subprocess.call([sys.executable, "instahack.py", url])
+    subprocess.call([sys.executable, "instahack.py"])
 
 
 def cool_banner():
@@ -80,8 +79,7 @@ def main():
             url = input("URL für Browser: ").strip()
             run_browser_with_proxy(url)
         elif choice == "2":
-            url = input("Instagram-Profil-URL: ").strip()
-            run_instahack(url)
+            run_instahack()
         elif choice == "3":
             print("Beende das Programm.")
             break

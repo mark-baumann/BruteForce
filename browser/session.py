@@ -12,18 +12,63 @@ class BrowserSession:
 
     def start(self):
         options = Options()
-        options.add_argument("--window-size=1920,1080")
-        # Tor Proxy SOCKS5 über localhost 9050, falls TorProxy gesetzt
-        if self.tor_proxy:
-            options.add_argument("--proxy-server=socks5://127.0.0.1:9050")
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_argument("user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                             "AppleWebKit/537.36 (KHTML, like Gecko) "
+                             "Chrome/114.0.0.0 Safari/537.36")
+        options.add_argument("--disable-infobars")
+        options.add_argument("--disable-extensions")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--incognito")
 
-        try:
-            self.driver = webdriver.Chrome(options=options)
-            logger.info("Chrome gestartet")
-            return True
-        except Exception as e:
-            logger.error(f"Fehler beim Starten von Chrome: {e}")
-            return False
+        # Deaktiviere Automation Flags
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option('useAutomationExtension', False)
+
+        if self.tor_proxy:
+            proxy_url = self.tor_proxy.get_proxy_url()
+            #options.add_argument(f'--proxy-server={proxy_url}')
+
+        self.driver = webdriver.Chrome(options=options)
+
+        # Anti-Detection Script
+        self.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+            'source': '''
+                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                window.navigator.chrome = { runtime: {} };
+                Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+                Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+            '''
+        })
+
+        self.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+            'source': '''
+                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+                window.navigator.chrome = { runtime: {} };
+                Object.defineProperty(navigator, 'languages', {get: () => ['en-US', 'en']});
+                Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+                const originalQuery = window.navigator.permissions.query;
+                window.navigator.permissions.query = (parameters) => (
+                    parameters.name === 'notifications' ?
+                    Promise.resolve({ state: Notification.permission }) :
+                    originalQuery(parameters)
+                );
+            '''
+        })
+
+        # Weitere Detektion abschwächen – setze window.navigator.permissions.query
+        self.driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
+            'source': '''
+                const originalQuery = window.navigator.permissions.query;
+                window.navigator.permissions.query = (parameters) => (
+                    parameters.name === 'notifications' ?
+                    Promise.resolve({ state: Notification.permission }) :
+                    originalQuery(parameters)
+                );
+            '''
+        })
+
+        return True
 
     def visit(self, url):
         if not self.driver:
